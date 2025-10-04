@@ -22,16 +22,10 @@ app.add_middleware(
 # Load telemetry data at startup
 # -----------------------------------------------------
 # The file must be at the root of your repo: /q-vercel-latency.json
-DATA_FILE = os.path.join(os.path.dirname(__file__), "..", "q-vercel-latency.json")
-DATA_FILE = os.path.abspath(DATA_FILE)
 
-if not os.path.exists(DATA_FILE):
-    raise RuntimeError(f"❌ Telemetry file not found at {DATA_FILE}. Make sure it's committed to the repo.")
-
-with open(DATA_FILE, "r") as f:
-    telemetry = json.load(f)
-
-
+file_path = os.path.join(os.path.dirname(__file__), "..", "q-vercel-latency.json")
+with open(file_path, "r") as f:
+    data = json.load(f)
 # -----------------------------------------------------
 # Root endpoint (sanity check)
 # -----------------------------------------------------
