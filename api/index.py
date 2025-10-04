@@ -1,77 +1,65 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import os
 import json
-import numpy as np
+import statistics
 
 app = FastAPI()
 
-# ✅ Enable CORS globally
+# ✅ Enable CORS globally for POST requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],       # Allow any origin
-    allow_credentials=True,
-    allow_methods=["*"],       # Allow all HTTP methods
-    allow_headers=["*"],       # Allow all headers
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# ✅ Load telemetry data safely
-DATA_FILE = os.path.join(os.path.dirname(__file__), "q-vercel-latency.json")
+# Load telemetry data once
+with open("api/q-vercel-latency.json", "r") as f:
+    telemetry_data = json.load(f)
 
-if os.path.exists(DATA_FILE):
-    with open(DATA_FILE, "r") as f:
-        telemetry = json.load(f)
-else:
-    telemetry = []
-    print("⚠️ Warning: q-vercel-latency.json not found. Telemetry will be empty.")
-
-
-@app.get("/")
-def home():
-    return {"status": "ok", "message": "FastAPI Vercel Analytics API 🚀"}
-
-
-# ✅ POST /analytics: process telemetry by region
-@app.post("/analytics")
-async def analytics(request: Request):
-    """
-    Example body:
-    {
-      "regions": ["emea", "apac"],
-      "threshold_ms": 156
-    }
-    """
-    body = await request.json()
-    regions = body.get("regions", [])
-    threshold = body.get("threshold_ms", 180)
-
-    result = {}
-
-    for region in regions:
-        region_data = [r for r in telemetry if r["region"] == region]
-        if not region_data:
-            continue
-
-        latencies = np.array([r["latency_ms"] for r in region_data])
-        uptimes = np.array([r["uptime_pct"] for r in region_data])
-
-        result[region] = {
-            "avg_latency": float(np.mean(latencies)),
-            "p95_latency": float(np.percentile(latencies, 95)),
-            "avg_uptime": float(np.mean(uptimes)),
-            "breaches": int(np.sum(latencies > threshold)),
-        }
-
-    return result
-
-
-# ✅ OPTIONS /analytics: fixes CORS preflight for browsers
 @app.options("/analytics")
 async def options_analytics():
+    """Handle browser preflight checks."""
     response = JSONResponse(content={})
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
+@app.post("/analytics")
+async def analytics(request: Request):
+    body = await request.json()
+    regions = body.get("regions", [])
+    threshold_ms = body.get("threshold_ms", 180)
+
+    response_data = {}
+
+    for region in regions:
+        region_data = [r for r in telemetry_data if r["region"] == region]
+
+        if not region_data:
+            continue
+
+        latencies = [r["latency_ms"] for r in region_data]
+        uptimes = [r["uptime_pct"] for r in region_data]
+        breaches = len([l for l in latencies if l > threshold_ms])
+
+        avg_latency = statistics.mean(latencies)
+        p95_latency = statistics.quantiles(latencies, n=100)[94]  # 95th percentile
+        avg_uptime = statistics.mean(uptimes)
+
+        response_data[region] = {
+            "avg_latency": avg_latency,
+            "p95_latency": p95_latency,
+            "avg_uptime": avg_uptime,
+            "breaches": breaches,
+        }
+
+    response = JSONResponse(content=response_data)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+@app.get("/")
+def root():
+    return {"message": "Analytics API is running"}
