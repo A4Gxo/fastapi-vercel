@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # api/index.py
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,3 +52,13 @@ async def analytics(request: Request):
         }
 
     return region_metrics
+=======
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"message": "Hello, World!"}
+
+>>>>>>> 789330d (feat: add FastAPI app)
