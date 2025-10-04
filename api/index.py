@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-# api/index.py
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import json
@@ -7,7 +5,7 @@ import statistics
 
 app = FastAPI()
 
-# ✅ Enable CORS for any origin
+# Enable CORS for all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,8 +14,8 @@ app.add_middleware(
 )
 
 @app.get("/")
-def read_root():
-    return {"message": "Analytics API running"}
+def root():
+    return {"message": "Analytics API is running"}
 
 @app.post("/analytics")
 async def analytics(request: Request):
@@ -25,14 +23,13 @@ async def analytics(request: Request):
     regions = body.get("regions", [])
     threshold = body.get("threshold_ms", 0)
 
-    # Load telemetry file
+    # Load telemetry data
     with open("q-vercel-latency.json", "r") as f:
-        data = json.load(f)
+        telemetry = json.load(f)
 
-    # Group by region
-    region_metrics = {}
+    result = {}
     for region in regions:
-        records = [r for r in data if r["region"] == region]
+        records = [r for r in telemetry if r["region"] == region]
         if not records:
             continue
 
@@ -40,25 +37,15 @@ async def analytics(request: Request):
         uptimes = [r["uptime_pct"] for r in records]
 
         avg_latency = sum(latencies) / len(latencies)
-        p95_latency = statistics.quantiles(latencies, n=100)[94]  # 95th percentile
+        p95_latency = statistics.quantiles(latencies, n=100)[94]
         avg_uptime = sum(uptimes) / len(uptimes)
         breaches = sum(1 for x in latencies if x > threshold)
 
-        region_metrics[region] = {
+        result[region] = {
             "avg_latency": avg_latency,
             "p95_latency": p95_latency,
             "avg_uptime": avg_uptime,
             "breaches": breaches
         }
 
-    return region_metrics
-=======
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-def read_root():
-    return {"message": "Hello, World!"}
-
->>>>>>> 789330d (feat: add FastAPI app)
+    return result
