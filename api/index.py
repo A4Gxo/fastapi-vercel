@@ -29,7 +29,7 @@ async def analytics(request: Request):
 
     # Load telemetry bundle (pretend it’s bundled or fetched from file)
     # For the exercise, use a local sample
-    with open("telemetry.json", "r") as f:
+    with open("q-vercel-latency.json", "r") as f:
         telemetry = json.load(f)
 
     result = {}
