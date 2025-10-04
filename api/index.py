@@ -1,88 +1,67 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import os
 import json
-import statistics
+import os
+import numpy as np
+from typing import Dict, Any
 
-# -----------------------------------------------------
-# Initialize FastAPI app
-# -----------------------------------------------------
 app = FastAPI()
 
-# ✅ Enable CORS globally
+# ✅ Enable CORS for any origin (required for Vercel tests)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # allow all origins
-    allow_credentials=False,
-    allow_methods=["*"],        # allow all HTTP methods (GET, POST, OPTIONS, etc.)
-    allow_headers=["*"],        # allow all headers
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# -----------------------------------------------------
-# Load telemetry data at startup
-# -----------------------------------------------------
-# The file must be at the root of your repo: /q-vercel-latency.json
+# ✅ Load the telemetry JSON file on startup
+FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "q-vercel-latency.json")
+with open(FILE_PATH, "r") as f:
+    TELEMETRY = json.load(f)
 
-file_path = os.path.join(os.path.dirname(__file__), "..", "q-vercel-latency.json")
-with open(file_path, "r") as f:
-    data = json.load(f)
-# -----------------------------------------------------
-# Root endpoint (sanity check)
-# -----------------------------------------------------
+
 @app.get("/")
-def read_root():
-    return {"message": "✅ FastAPI analytics endpoint is live"}
+def home():
+    return {"message": "FastAPI Vercel Analytics is running ✅"}
 
 
-# -----------------------------------------------------
-# POST /analytics
-# -----------------------------------------------------
 @app.post("/analytics")
-async def analytics(request: Request):
+async def analytics(request: Request) -> Dict[str, Any]:
     """
-    Expects JSON body:
+    Example POST body:
     {
-      "regions": ["emea", "apac"],
-      "threshold_ms": 180
+        "regions": ["emea", "apac"],
+        "threshold_ms": 156
     }
-    Returns per-region metrics: avg_latency, p95_latency, avg_uptime, breaches
     """
     body = await request.json()
     regions = body.get("regions", [])
-    threshold_ms = body.get("threshold_ms", 180)
+    threshold_ms = body.get("threshold_ms", 0)
 
-    result = {}
+    response = {}
 
     for region in regions:
-        records = telemetry.get(region, [])
-
+        # Filter records by region
+        records = [r for r in TELEMETRY if r["region"] == region]
         if not records:
-            result[region] = {
-                "avg_latency": None,
-                "p95_latency": None,
-                "avg_uptime": None,
-                "breaches": 0,
-            }
             continue
 
+        # Extract latencies and uptimes
         latencies = [r["latency_ms"] for r in records]
         uptimes = [r["uptime_pct"] for r in records]
 
-        # Mean latency & uptime
-        avg_latency = statistics.mean(latencies)
-        avg_uptime = statistics.mean(uptimes)
+        # Compute metrics
+        avg_latency = float(np.mean(latencies))
+        p95_latency = float(np.percentile(latencies, 95))
+        avg_uptime = float(np.mean(uptimes))
+        breaches = sum(1 for r in records if r["latency_ms"] > threshold_ms)
 
-        # 95th percentile latency
-        p95_latency = statistics.quantiles(latencies, n=100)[94]
-
-        # Breaches count
-        breaches = sum(1 for x in latencies if x > threshold_ms)
-
-        result[region] = {
+        response[region] = {
             "avg_latency": avg_latency,
             "p95_latency": p95_latency,
             "avg_uptime": avg_uptime,
             "breaches": breaches,
         }
 
-    return result
+    return response
