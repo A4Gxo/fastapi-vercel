@@ -1,67 +1,65 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import json
-import os
 import numpy as np
-from typing import Dict, Any
+import os
 
 app = FastAPI()
 
-# ✅ Enable CORS for any origin (required for Vercel tests)
+# ✅ Enable CORS for all origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],          # Allow any origin
+    allow_credentials=True,
+    allow_methods=["*"],          # Allow all HTTP methods including OPTIONS
+    allow_headers=["*"],          # Allow all headers
 )
 
-# ✅ Load the telemetry JSON file on startup
-FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "q-vercel-latency.json")
-with open(FILE_PATH, "r") as f:
-    TELEMETRY = json.load(f)
+# Load telemetry data from q-vercel-latency.json
+DATA_FILE = os.path.join(os.path.dirname(__file__), "q-vercel-latency.json")
+with open(DATA_FILE, "r") as f:
+    telemetry = json.load(f)
 
 
 @app.get("/")
 def home():
-    return {"message": "FastAPI Vercel Analytics is running ✅"}
+    return {"status": "ok", "message": "FastAPI Vercel Analytics running 🚀"}
 
 
 @app.post("/analytics")
-async def analytics(request: Request) -> Dict[str, Any]:
+async def analytics(request: Request):
     """
-    Example POST body:
+    POST body example:
     {
-        "regions": ["emea", "apac"],
-        "threshold_ms": 156
+      "regions": ["emea", "apac"],
+      "threshold_ms": 156
     }
     """
     body = await request.json()
     regions = body.get("regions", [])
-    threshold_ms = body.get("threshold_ms", 0)
+    threshold = body.get("threshold_ms", 180)
 
-    response = {}
+    result = {}
 
     for region in regions:
-        # Filter records by region
-        records = [r for r in TELEMETRY if r["region"] == region]
-        if not records:
+        # Filter telemetry by region
+        region_data = [r for r in telemetry if r["region"] == region]
+        if not region_data:
             continue
 
-        # Extract latencies and uptimes
-        latencies = [r["latency_ms"] for r in records]
-        uptimes = [r["uptime_pct"] for r in records]
+        latencies = np.array([r["latency_ms"] for r in region_data])
+        uptimes = np.array([r["uptime_pct"] for r in region_data])
 
-        # Compute metrics
         avg_latency = float(np.mean(latencies))
         p95_latency = float(np.percentile(latencies, 95))
         avg_uptime = float(np.mean(uptimes))
-        breaches = sum(1 for r in records if r["latency_ms"] > threshold_ms)
+        breaches = int(np.sum(latencies > threshold))
 
-        response[region] = {
+        result[region] = {
             "avg_latency": avg_latency,
             "p95_latency": p95_latency,
             "avg_uptime": avg_uptime,
             "breaches": breaches,
         }
 
-    return response
+    return result
