@@ -1,12 +1,12 @@
 # api/index.py
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-import numpy as np
 import json
+import statistics
 
 app = FastAPI()
 
-# Enable CORS for POST requests from any origin
+# ✅ Enable CORS for any origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,41 +14,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    return {"message": "Analytics API running"}
+
 @app.post("/analytics")
 async def analytics(request: Request):
-    """
-    POST body:
-    {
-      "regions": ["emea", "apac"],
-      "threshold_ms": 156
-    }
-    """
-    data = await request.json()
-    regions = data.get("regions", [])
-    threshold = data.get("threshold_ms", 180)
+    body = await request.json()
+    regions = body.get("regions", [])
+    threshold = body.get("threshold_ms", 0)
 
-    # Load telemetry bundle (pretend it’s bundled or fetched from file)
-    # For the exercise, use a local sample
+    # Load telemetry file
     with open("q-vercel-latency.json", "r") as f:
-        telemetry = json.load(f)
+        data = json.load(f)
 
-    result = {}
+    # Group by region
+    region_metrics = {}
     for region in regions:
-        if region not in telemetry:
+        records = [r for r in data if r["region"] == region]
+        if not records:
             continue
-        region_data = telemetry[region]
-        latencies = np.array([d["latency_ms"] for d in region_data])
-        uptimes = np.array([d["uptime"] for d in region_data])
 
-        result[region] = {
-            "avg_latency": float(latencies.mean()),
-            "p95_latency": float(np.percentile(latencies, 95)),
-            "avg_uptime": float(uptimes.mean()),
-            "breaches": int((latencies > threshold).sum()),
+        latencies = [r["latency_ms"] for r in records]
+        uptimes = [r["uptime_pct"] for r in records]
+
+        avg_latency = sum(latencies) / len(latencies)
+        p95_latency = statistics.quantiles(latencies, n=100)[94]  # 95th percentile
+        avg_uptime = sum(uptimes) / len(uptimes)
+        breaches = sum(1 for x in latencies if x > threshold)
+
+        region_metrics[region] = {
+            "avg_latency": avg_latency,
+            "p95_latency": p95_latency,
+            "avg_uptime": avg_uptime,
+            "breaches": breaches
         }
 
-    return result
-
-@app.get("/")
-def root():
-    return {"message": "FastAPI Vercel analytics running"}
+    return region_metrics
